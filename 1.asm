@@ -8,24 +8,10 @@
 // | Author:zy_cwind<391321232@qq.com>
 // +----------------------------------------------------------------------
 
-/**
- * FM8PB53B 主频 4MHz 加热器代码
- *
- * 适用于工频 50Hz
- *
- */
 #include <8pb53b.ash>
 
-/**
- * 中断中的局部变量使用独立栈
- * 参数通过 ACC 传递
- *
- *
- */
 #define TPRIO 0x40
-#define KEYPESS_LONG 200
-#define STACK 0x20
-#define INTST 0x30
+#define KEYPESS_LONG  200
 
 #define ZFLAG STATUS, 2
 #define CFLAG STATUS, 0
@@ -61,153 +47,157 @@ reload         MACRO
     MOVAR  TMR0
     ENDM
 
-mode       REG     0x10
-counter    REG     0x11
-angle      REG     0x12
-timestamp  REG     0x13
-duty       REG     0x14
+mode          REG     0x10
+counter       REG     0x11
+angle         REG     0x12
+timestamp     REG     0x13
+duty          REG     0x14
+
+s_previous    REG     0x15
 
 /**
- * 静态局部变量
+ * 局部变量
+ * 应避免中断干扰即函数不可重入
  *
  *
  */
-s_previous REG     0x15
+time_v0       REG     0x16
+time_v1       REG     0x17
+time_v2       REG     0x18
+time_v3       REG     0x19
+set_ledb_v0   REG     0x1A
+set_pout_v0   REG     0x1B
+is_start_v0   REG     0x1C
+is_start_v1   REG     0x1D
+delay_v0      REG     0x1E
+delay_v1      REG     0x1F
+delay_v2      REG     0x20
+setup_led_v0  REG     0x21
+main_v0       REG     0x22
+main_v1       REG     0x23
+main_v2       REG     0x24
 
 /**
  * 定时器中断 200us
- * 注意不污染到原来栈中的数据
  *
  *
  */
     ORG 008H
-timer:
-    MOVAR  INTST + 0
+time:
+    MOVAR  time_v0
     MOVR   STATUS,    A
-    MOVAR  INTST + 1
+    MOVAR  time_v1
     BTRSS  INTFLAG  , 0
-    GOTO   exittimer
+    GOTO   time_labels0
     reload
     MOVR   timestamp, A
     INCR   timestamp, R
     ANDIA  TPRIO - 1
     SUBAR  duty ,  A
-    BCR    INTST + 2, 2
+    BCR    time_v2  , 0
     BTRSS  CFLAG
     GOTO   $ + 4
     MOVR   mode ,  R
     BTRSS  ZFLAG
-    BSR    INTST + 2, 2
-    MOVR   INTST + 2, A
+    BSR    time_v2  , 0
+    MOVR   time_v2  , A
     CALL   set_ledb
     MOVR   mode ,  R
     BTRSC  ZFLAG
-    GOTO   exittimer
+    GOTO   time_labels0
     CALL   is_start
-    ANDIA  1
+    ANDIA  0x01
     BTRSC  ZFLAG
-    GOTO   pout
+    GOTO   time_labels1
     CLRR   angle
     MOVR   mode ,  A
-    MOVAR  INTST + 2
+    MOVAR  time_v2
     MOVIA  0x01
-    DECRSZ INTST + 2, R
+    DECRSZ time_v2  , R
     GOTO $ + 2
     MOVIA  0x22
-    DECRSZ INTST + 2, R
+    DECRSZ time_v2  , R
     GOTO $ + 2
     MOVIA  0x11
     MOVAR  counter
-pout:
+time_labels1:
     MOVIA  0x64
     SUBAR  angle,  A
     BTRSS  CFLAG
-    GOTO   exittimer
+    GOTO   time_labels0
     MOVR   angle,  A
     INCR   angle,  R
-    MOVAR  INTST + 2
+    MOVAR  time_v2
     MOVR   counter  , A
-    SUBAR  INTST + 2, A
-    BCR    INTST + 3, 0
+    SUBAR  time_v2  , A
+    BCR    time_v3  , 0
     BTRSC  ZFLAG
-    BSR    INTST + 3, 0
+    BSR    time_v3  , 0
     MOVR   counter  , A
     ADDIA  50
-    SUBAR  INTST + 2, A
+    SUBAR  time_v2  , A
     BTRSC  ZFLAG
-    BSR    INTST + 3, 0
-    MOVR   INTST + 3, A
+    BSR    time_v3  , 0
+    MOVR   time_v3  , A
     CALL   set_pout
-exittimer:
+time_labels0:
     CLRR   INTFLAG
-    MOVR   INTST + 1, A
+    MOVR   time_v1  , A
     MOVAR  STATUS
-    MOVR   INTST + 0, A
+    MOVR   time_v0  , A
     RETFIE
 
 /**
- * 硬件相关
- *
+ * 板子
  *
  *
  */
 is_keydown:
     MOVIA  0
-    BTRSC  PORTB,  1
+    BTRSS  PORTB,  1
     RETIA  1
     RETURN
 
 set_ledb:
-    MOVAR  STACK
+    MOVAR  set_ledb_v0
     BCR    PORTB,  2
-    BTRSC  STACK,  0
+    BTRSC  set_ledb_v0 , 0
     BSR    PORTB,  2
     RETURN
 
 set_pout:
-    MOVAR  STACK
+    MOVAR  set_ledb_v0
     BCR    PORTA,  2
-    BTRSC  STACK,  0
+    BTRSC  set_ledb_v0 , 0
     BSR    PORTA,  2
     RETURN
 
-/**
- * 上升沿
- *
- *
- */
 is_start:
-    BCR    STACK,  0
+    BCR    is_start_v0 , 0
     BTRSC  PORTA,  3
-    BSR    STACK,  0
-    BCR    STACK + 1, 0
-    BTRSS  STACK,  0
+    BSR    is_start_v0 , 0
+    BCR    is_start_v1 , 0
+    BTRSS  is_start_v0 , 0
     GOTO   $ + 4
     BTRSC  s_previous  , 0
     GOTO   $ + 2
-    BSR    STACK + 1, 0
-    MOVR   STACK,  A
+    BSR    is_start_v1 , 0
+    MOVR   is_start_v0 , A
     MOVAR  s_previous
-    MOVR   STACK + 1, A
+    MOVR   is_start_v1 , A
     RETURN
 
-/**
- * 软件延时
- * 4T
- * 一个 CPU Cycle 是一微秒
- *
- */
 delay:
-    MOVAR  STACK
+    MOVAR  delay_v0
     MOVIA  41
-    MOVAR  STACK + 1
+    MOVAR  delay_v1
     MOVIA  10
-    MOVAR  STACK + 2
-    DECRSZ STACK + 2, R
+    MOVAR  delay_v2
+    DECRSZ delay_v2 , R
     GOTO   $ - 1
-    DECRSZ STACK + 1, R
+    DECRSZ delay_v1 , R
     GOTO   $ - 5
-    DECRSZ STACK + 0, R
+    DECRSZ delay_v0 , R
     GOTO   $ - 9
     RETURN
 
@@ -219,14 +209,14 @@ delay:
 setup_led:
     turn_off_led
     MOVR   mode ,  A
-    MOVAR  STACK
-    DECRSZ STACK,  R
+    MOVAR  setup_led_v0
+    DECRSZ setup_led_v0, R
     GOTO $ + 2
     GOTO $ + 8
-    DECRSZ STACK,  R
+    DECRSZ setup_led_v0, R
     GOTO $ + 2
     GOTO $ + 4
-    DECRSZ STACK,  R
+    DECRSZ setup_led_v0, R
     RETURN
     set_led3
     set_led2
@@ -240,6 +230,11 @@ setup_fan:
     BSR    PORTA,  1
     RETURN
 
+/**
+ * 定时器 0 八位自动重载
+ *
+ *
+ */
 setup_timer:
     MOVIA  0x00
     OPTION
@@ -247,42 +242,52 @@ setup_timer:
     reload
     RETURN
 
+/**
+ * 初始化 IO
+ *
+ *
+ */
 init:
     CLRR   angle
     CLRR   timestamp
     CLRR   duty
     CLRR   mode
+    MOVIA  0x08
+    IOST   PORTA
+    MOVIA  0x02
+    IOST   PORTB
+    MOVIA  0x08
+    MOVAR  PORTA
+    MOVIA  0x02
+    MOVAR  PORTB
     CALL   setup_led
+    CALL   setup_fan
     CALL   setup_timer
     RETURN
 
-/**
- * 主程序入口
- *
- *
- */
 main:
-    CLRR   STACK
-    CLRR   STACK + 1
+    CLRR   main_v0
+    CLRR   main_v1
     CALL   init
     BSR    INTEN,  7
+
 main_labels0:
-    MOVIA  10
+    MOVIA  0x0A
     CALL   delay
     CALL   is_keydown
-    MOVAR  STACK + 2
-    BTRSC  STACK + 2, 0
-    GOTO   $ + 2
-    GOTO   $ + 3
-    INCR   STACK,  R
+    MOVAR  main_v2
+    BTRSC  main_v2  , 0
+    GOTO   $ + 2 //////////// down
+    GOTO   $ + 3 //////////// up
+    INCR   main_v0  , R
     GOTO   main_labels1
-    MOVR   STACK,  A
+    MOVR   main_v0  , R
     BTRSC  ZFLAG
     GOTO   main_labels1
-    SUBIA  KEYPESS_LONG
-    BTRSS  CFLAG
+    SUBIA  KEYPESS_LONG ///// c != 0
+    BTRSC  CFLAG
     GOTO   $ + 2
-    GOTO   $ + 3
+    GOTO   $ + 3 //////////// c < KEYPESS_LONG
     CLRR   mode
     GOTO   main_labels2
     INCR   mode ,  A
@@ -296,19 +301,27 @@ main_labels2:
     CALL   delay
     CALL   setup_led
     CALL   setup_fan
-    CLRR   STACK
+    CLRR   main_v0
 main_labels1:
     MOVR   duty ,  A
     ANDIA  TPRIO - 1
     BTRSC  ZFLAG
-    BCR    STACK + 1, 0
+    BCR    main_v1  , 0
     MOVR   duty ,  A
     ANDIA  TPRIO
     BTRSS  ZFLAG
-    BSR    STACK + 1, 0
-    BTRSS  STACK + 1, 0
+    BSR    main_v1  , 0
+    BTRSS  main_v1  , 0
     GOTO   $ + 3
     DECR   duty ,  R
     GOTO   $ + 2
     INCR   duty ,  R
     GOTO   main_labels0
+
+/**
+ * 复位向量
+ *
+ *
+ */
+    ORG 3FFH
+    GOTO   main
