@@ -17,7 +17,8 @@
 #include <reg51.h>
 
 #define PERIOD 0x40
-#define KEYPESS_LONG 200
+#define KEYPESS_LONG 100
+#define KEYPESS_SHRT 8
 
 /**
  * 三档脉冲频率
@@ -202,7 +203,7 @@ void init() {
  *
  */
 void main() {
-    int c = 0;
+    char c = 0;
     char dir;
     /**
      * 初始化
@@ -214,7 +215,7 @@ void main() {
     while (1) {
         delay(10);
         if (!is_keydown()) {
-            if (c) {
+            if (c > KEYPESS_SHRT) {
                 if (c < KEYPESS_LONG) {
                     mode++;
                     mode &= 3;
@@ -222,17 +223,11 @@ void main() {
                         mode = 1;
                 } else
                     mode = 0;
-                /**
-                 * 按键消抖
-                 *
-                 *
-                 */
-                delay(80);
                 setup_led();
                 setup_fan();
-                c = 0;
             }
-        } else
+            c = 0;
+        } else if (c < 255)
             c++;
         /**
          * 呼吸灯占空比
